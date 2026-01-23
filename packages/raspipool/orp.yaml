@@ -40,7 +40,7 @@ automation:
   condition: []
   action:
   - service: notify.pushbullet
-    data_template:
+    data:
       message: 'Between {{state_attr("sensor.orp_mean", "min_value")}} and {{state_attr("sensor.orp_mean", "max_value")}}{{- "\n\n" -}}@{{now().strftime("%H:%M")}}[{{now().day}}/{{now().month}}]'
       title: 'ORP probe bad (calibrate?) !!!'
   - service: automation.turn_off

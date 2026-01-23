@@ -135,3 +135,13 @@ class RPiGPIOCover(CoverEntity):
         """Open the cover."""
         if self.is_closed:
             self._trigger()
+
+    async def async_close_cover(self, **kwargs):
+        """Close the cover asynchronously."""
+        if not self.is_closed:
+            await self.hass.async_add_executor_job(self._trigger)
+
+    async def async_open_cover(self, **kwargs):
+        """Open the cover asynchronously."""
+        if self.is_closed:
+            await self.hass.async_add_executor_job(self._trigger)

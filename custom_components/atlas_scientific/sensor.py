@@ -1,205 +1,227 @@
-# Under MIT licence
-# Release 0.1 (06/08/2019) by segalion at gmail
-# ORP & pH tested. DO & EC from datasheets, so possible errors like ORP/OR
+"""Support for Atlas Scientific EZO sensors."""
 
+from __future__ import annotations
 
-import logging
-import serial
 import io
-import fcntl
-import string
+import logging
 import time
+from typing import Any
 
-from homeassistant.helpers.entity import Entity
-from homeassistant.const import (
-	CONF_NAME, CONF_UNIT_OF_MEASUREMENT, CONF_PORT)
-from homeassistant.components.sensor import PLATFORM_SCHEMA
+import fcntl
+import serial
 import voluptuous as vol
+
+from homeassistant.components.sensor import (
+    PLATFORM_SCHEMA,
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.const import CONF_NAME, CONF_PORT, UnitOfTemperature
+from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
-#from homeassistant.const import TEMP_CELSIUS
+from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 _LOGGER = logging.getLogger(__name__)
-CONF_OFFSET = 'offset'
-# Validation of the user's configuration
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-	vol.Required(CONF_PORT): cv.string,
-	vol.Optional(CONF_NAME, default='ezo'): cv.string,
-	vol.Optional(CONF_OFFSET, default=0.0): vol.Coerce(float)
-})
 
-def setup_platform(hass, config, add_devices, discovery_info=None):
-	"""Setup the sensor platform."""
-	add_devices([AtlasSensor(
-		name=config.get(CONF_NAME),
-		port=config.get(CONF_PORT),
-		offset=config.get(CONF_OFFSET)
-	)])
+CONF_OFFSET = "offset"
 
-class AtlasSensor(Entity):
-	"""Representation of a Sensor."""
-	io_mode = 0					# 0 = serial, 1 = I2C
-	long_timeout = 1.5         	# the timeout needed to query readings and calibrations
-	short_timeout = .5         	# timeout for regular commands
-	default_i2dev = "/dev/i2c-1"    # the default bus for I2C on the newer Raspberry Pis, certain older boards use bus 0
-	auto_sleep = 1              # enable auto sleep mode after readings
+PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
+    {
+        vol.Required(CONF_PORT): vol.Any(cv.string, cv.positive_int),
+        vol.Optional(CONF_NAME, default="ezo"): cv.string,
+        vol.Optional(CONF_OFFSET, default=0.0): vol.Coerce(float),
+    }
+)
 
-	def __init__(self, name, port, offset):
-		"""Initialize the sensor."""
-		self._state = None
-		self._name = name
-		self._offset = offset
-		# Identifiers: [ name (from I?), units, icon, auto_sleep ]
-		ezos = {"ph": ['ph', 'pH', 'mdi:alpha-h-circle', 1],
-			   "orp": ['orp', 'mV', 'mdi:alpha-r-circle', 1],
-			   "or": ['orp', 'mV', 'mdi:alpha-r-circle', 1],
-			   "orp": ['orp', 'mV', 'mdi:alpha-r-circle', 1],
-			   "do": ['dissolved_oxygen','mV', 'mdi:alpha-x-circle', 0],
-			   "d.o.": ['dissolved_oxygen','mV', 'mdi:alpha-x-circle', 0],
-			   "ec": ['conductivity', "EC", 'mdi:alpha-c-circle', 0],
-			   "rtd": [ 'temperature', 'ºC', 'mdi:oil-temperature', 0]}
+_DEVICE_CLASSES: dict[str, SensorDeviceClass | None] = {
+    "ph": getattr(SensorDeviceClass, "PH", None),
+    "temperature": SensorDeviceClass.TEMPERATURE,
+    "conductivity": getattr(SensorDeviceClass, "CONDUCTIVITY", None),
+}
 
-		_LOGGER.debug("Checking port %s", port)
-		self.port = int(port,0)
-		if(self.port > 0):
-			self.io_mode = 1 # switch to I2C communication
-			_LOGGER.info("I2C for Atlas EZO @%02x", self.port)
-			self.file_read = io.open(self.default_i2dev, "rb", buffering=0)
-			self.file_write = io.open(self.default_i2dev, "wb", buffering=0)
 
-			# initializes I2C to the given port/address
-			self.set_i2c_address(self.port)
+async def async_setup_platform(
+    hass: HomeAssistant,
+    config: ConfigType,
+    async_add_entities,
+    discovery_info: DiscoveryInfoType | None = None,
+) -> None:
+    """Set up the Atlas Scientific platform."""
+    sensor = await hass.async_add_executor_job(
+        AtlasSensor,
+        config.get(CONF_NAME),
+        config.get(CONF_PORT),
+        config.get(CONF_OFFSET),
+    )
+    async_add_entities([sensor], True)
 
-		else:
-			self.io_mode = 0 # serial
-			self.port = port
-			_LOGGER.info("Serial for Atlas EZO @%s",port)
-			self.ser = serial.Serial(port, 9600, timeout=3, write_timeout=3)
 
-			# Reset buffer
-			self._read("")
-			# Get Status
-			status = self._read("Status")
-			# Set response ON
-			ok = self._read("*OK,1")
-			ok += self._read("RESPONSE,1")
-			# Set continuos  mode OFF
-			c = self._read("C,0")
+class AtlasSensor(SensorEntity):
+    """Representation of an Atlas EZO sensor."""
 
-		# Get kind of EZO
-		self._ezo_dev = None
-		for i in range(5):
-			ezo = self._read("I")
-			_LOGGER.debug("I -> check: "+ezo)
-			if ezo is not None:
-				ezo = ezo.lower().split(',')
-				if len(ezo)>2 and ezo[1] in ezos:
-					self._ezo_dev = ezos[ezo[1]][0]
-					self._ezo_uom = ezos[ezo[1]][1]
-					self._ezo_icon = ezos[ezo[1]][2]
-					self.auto_sleep = ezos[ezo[1]][3]
-					self._ezo_fwversion = ezo[2]
-					self._name += ("_" + self._ezo_dev)
-					_LOGGER.info("Atlas EZO '%s' version %s detected" % (self._ezo_dev, self._ezo_fwversion ) )
-					break
-		if self._ezo_dev is None:
-			_LOGGER.error("Atlas EZO device error or unsupported: "+ezo )
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
-	def set_i2c_address(self, addr):
-		# set the I2C communications to the slave specified by the address
-		# The commands for I2C dev using the ioctl functions are specified in
-		# the i2c-dev.h file from i2c-tools
-		I2C_SLAVE = 0x703
-		fcntl.ioctl(self.file_read, I2C_SLAVE, addr)
-		fcntl.ioctl(self.file_write, I2C_SLAVE, addr)
+    long_timeout = 1.5  # timeout for readings/calibrations
+    short_timeout = 0.5  # timeout for regular commands
+    default_i2dev = "/dev/i2c-1"
 
-	@property
-	def name(self):
-		"""Return the name of the sensor."""
-		# return "Atlas Scientific"
-		return self._name
+    def __init__(self, name: str, port: str, offset: float) -> None:
+        """Initialize the sensor."""
+        self._offset = offset
+        self._base_name = name
+        self._attr_name = name
+        self._attr_native_value = None
+        self._ezo_dev = None
+        self._ezo_uom = None
+        self._ezo_icon = None
+        self._ezo_fwversion = None
+        self._auto_sleep = True
 
-	@property
-	def device_class(self):
-		"""Return the device class of the sensor."""
-		return self._ezo_dev
+        self._io_mode = "serial"
+        self._port: str | int = port
+        self._serial: serial.Serial | None = None
+        self._file_read: io.BufferedReader | None = None
+        self._file_write: io.BufferedWriter | None = None
 
-	@property
-	def icon(self):
-		"""Return the icon of the sensor."""
-		return self._ezo_icon
+        ezos = {
+            "ph": ("ph", "pH", "mdi:alpha-h-circle", True),
+            "orp": ("orp", "mV", "mdi:alpha-r-circle", True),
+            "or": ("orp", "mV", "mdi:alpha-r-circle", True),
+            "do": ("dissolved_oxygen", "mV", "mdi:alpha-x-circle", False),
+            "d.o.": ("dissolved_oxygen", "mV", "mdi:alpha-x-circle", False),
+            "ec": ("conductivity", "EC", "mdi:alpha-c-circle", False),
+            "rtd": ("temperature", UnitOfTemperature.CELSIUS, "mdi:oil-temperature", False),
+        }
 
-	@property
-	def fw_version(self):
-		"""Return the firmware version of the sensor."""
-		return self._ezo_fwversion
+        _LOGGER.debug("Checking port %s", port)
+        i2c_addr = self._parse_i2c_address(port)
+        if i2c_addr is not None and i2c_addr > 0:
+            self._io_mode = "i2c"
+            self._port = i2c_addr
+            _LOGGER.info("I2C for Atlas EZO @%02x", i2c_addr)
+            self._file_read = io.open(self.default_i2dev, "rb", buffering=0)
+            self._file_write = io.open(self.default_i2dev, "wb", buffering=0)
+            self._set_i2c_address(i2c_addr)
+        else:
+            self._io_mode = "serial"
+            self._port = str(port)
+            _LOGGER.info("Serial for Atlas EZO @%s", self._port)
+            self._serial = serial.Serial(self._port, 9600, timeout=3, write_timeout=3)
 
-	@property
-	def state(self):
-		"""Return the state of the sensor."""
-		return self._state
+            # Reset buffer and basic configuration for serial mode.
+            self._read("")
+            self._read("Status")
+            self._read("*OK,1")
+            self._read("RESPONSE,1")
+            self._read("C,0")
 
-	@property
-	def unit_of_measurement(self):
-		"""Return the unit of measurement."""
-		return self._ezo_uom
+        for _ in range(5):
+            info = self._read("I")
+            if info:
+                _LOGGER.debug("I -> check: %s", info)
+                parts = info.lower().split(",")
+                if len(parts) > 2 and parts[1] in ezos:
+                    self._ezo_dev, self._ezo_uom, self._ezo_icon, self._auto_sleep = ezos[parts[1]]
+                    self._ezo_fwversion = parts[2]
+                    self._attr_name = f"{self._base_name}_{self._ezo_dev}"
+                    self._attr_icon = self._ezo_icon
+                    self._attr_native_unit_of_measurement = self._ezo_uom
+                    self._attr_device_class = _DEVICE_CLASSES.get(self._ezo_dev)
+                    self._attr_unique_id = f"{self._port}_{self._ezo_dev}"
+                    self._attr_extra_state_attributes = {
+                        "firmware_version": self._ezo_fwversion
+                    }
+                    _LOGGER.info(
+                        "Atlas EZO '%s' version %s detected",
+                        self._ezo_dev,
+                        self._ezo_fwversion,
+                    )
+                    break
 
-	def i2c_write(self, cmd):
-		# appends the null character and sends the string over I2C
-		cmd += "\00"
-		cmd = cmd.encode()
-		return self.file_write.write(cmd)
+        if self._ezo_dev is None:
+            _LOGGER.error("Atlas EZO device error or unsupported: %s", info)
 
-	def i2c_read(self, num_of_bytes=31):
-		# reads a specified number of bytes from I2C, then parses and displays the result
-		res = self.file_read.read(num_of_bytes)         # read from the board
-		response = list(filter(lambda x: x != '\x00', res))     # remove the null characters to get the response
-		if response[0] == 1:             # if the response isn't an error
-			# change MSB to 0 for all received characters except the first and get a list of characters
-			char_list = map(lambda x: chr(x & ~0x80), list(response[1:]))
-			# NOTE: having to change the MSB to 0 is a glitch in the raspberry pi, and you shouldn't have to do this!
-			return ''.join(char_list)     # convert the char list to a string and returns it
-		else:
-			_LOGGER.error("I2C read error: " + str(response[0]))
-			return ''
+    def _parse_i2c_address(self, port: str) -> int | None:
+        """Parse the I2C address, if any."""
+        try:
+            return int(str(port), 0)
+        except (TypeError, ValueError):
+            return None
 
-	def _read(self,command="R",terminator="\r*OK\r"):
-		line = ""
-		if self.io_mode == 0:
-			self.ser.write((command + "\r").encode())
-			for i in range(50):
-				line += self.ser.read().decode()
-				if ( line[0]=="*" and line[-1]=="\r") or terminator in line: break
-			line.replace(terminator,"")
-		else:
-			self.i2c_write(command)
-			# the read and calibration commands require a longer timeout
-			if((command.upper().startswith("R")) or
-				(command.upper().startswith("CAL"))):
-				time.sleep(self.long_timeout)
-			elif command.upper().startswith("SLEEP"):
-				return "sleep mode"
-			else:
-				time.sleep(self.short_timeout)
-			line = self.i2c_read().rstrip('\x00')
-		return line
+    def _set_i2c_address(self, addr: int) -> None:
+        """Set the I2C communications to the specified address."""
+        if self._file_read is None or self._file_write is None:
+            return
+        i2c_slave = 0x703
+        fcntl.ioctl(self._file_read, i2c_slave, addr)
+        fcntl.ioctl(self._file_write, i2c_slave, addr)
 
-	def update(self):
-		"""Fetch new state data for the sensor.
-		"""
-		try:
-			r = self._read()
-			self._state = float(r) + self._offset
-			_LOGGER.debug("update %s => '%s'" % ( self.name, self._state ) )
-			if self.auto_sleep==1:
-				self._read("SLEEP")
-		except Exception as e:
-			_LOGGER.error("Exception: "+e+"! read '%s'" % r)
-		return
+    def _i2c_write(self, cmd: str) -> None:
+        """Send a string over I2C."""
+        if self._file_write is None:
+            return
+        self._file_write.write((cmd + "\00").encode())
 
-	def __del__(self):
-		"""close the sensor."""
-		if self.io_mode == 1:
-			self.file_read.close()
-			self.file_write.close()
-		else:
-			self.ser.close()
+    def _i2c_read(self, num_of_bytes: int = 31) -> str:
+        """Read bytes over I2C and parse the response."""
+        if self._file_read is None:
+            return ""
+        res = self._file_read.read(num_of_bytes)
+        response = [byte for byte in res if byte != 0]
+        if not response:
+            _LOGGER.error("I2C read returned empty response")
+            return ""
+        if response[0] != 1:
+            _LOGGER.error("I2C read error: %s", response[0])
+            return ""
+        char_list = (chr(byte & ~0x80) for byte in response[1:])
+        return "".join(char_list)
+
+    def _read(self, command: str = "R", terminator: str = "\r*OK\r") -> str:
+        """Read a response from the device."""
+        if self._io_mode == "serial" and self._serial is not None:
+            line = ""
+            self._serial.write((command + "\r").encode())
+            for _ in range(50):
+                chunk = self._serial.read().decode(errors="ignore")
+                if not chunk:
+                    break
+                line += chunk
+                if (line.startswith("*") and line.endswith("\r")) or terminator in line:
+                    break
+            return line.replace(terminator, "")
+
+        self._i2c_write(command)
+        if command.upper().startswith("R") or command.upper().startswith("CAL"):
+            time.sleep(self.long_timeout)
+        elif command.upper().startswith("SLEEP"):
+            return "sleep mode"
+        else:
+            time.sleep(self.short_timeout)
+        return self._i2c_read().rstrip("\x00")
+
+    def update(self) -> None:
+        """Fetch new state data for the sensor."""
+        response: Any = None
+        try:
+            response = self._read()
+            self._attr_native_value = float(response) + self._offset
+            _LOGGER.debug("Update %s => '%s'", self.name, self._attr_native_value)
+            if self._auto_sleep:
+                self._read("SLEEP")
+        except (TypeError, ValueError):
+            _LOGGER.warning("Invalid reading from %s: %s", self.name, response)
+            self._attr_native_value = None
+        except Exception:
+            _LOGGER.exception("Error reading from %s", self.name)
+
+    def __del__(self) -> None:
+        """Close the sensor."""
+        if self._io_mode == "i2c":
+            if self._file_read is not None:
+                self._file_read.close()
+            if self._file_write is not None:
+                self._file_write.close()
+        elif self._serial is not None:
+            self._serial.close()

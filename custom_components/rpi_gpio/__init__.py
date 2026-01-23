@@ -18,19 +18,19 @@ PLATFORMS = [
 ]
 
 
-def setup(hass: HomeAssistant, config: ConfigType) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Raspberry PI GPIO component."""
 
-    def cleanup_gpio(event):
-        """Stuff to do before stopping."""
-        GPIO.cleanup()
+    async def cleanup_gpio(event):
+        """Clean up GPIO before stopping."""
+        await hass.async_add_executor_job(GPIO.cleanup)
 
-    def prepare_gpio(event):
-        """Stuff to do when Home Assistant starts."""
-        hass.bus.listen_once(EVENT_HOMEASSISTANT_STOP, cleanup_gpio)
+    async def prepare_gpio(event):
+        """Prepare GPIO when Home Assistant starts."""
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, cleanup_gpio)
 
-    hass.bus.listen_once(EVENT_HOMEASSISTANT_START, prepare_gpio)
-    GPIO.setmode(GPIO.BCM)
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_START, prepare_gpio)
+    await hass.async_add_executor_job(GPIO.setmode, GPIO.BCM)
     return True
 
 

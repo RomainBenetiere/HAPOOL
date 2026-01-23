@@ -41,11 +41,11 @@ automation:
       hours: 48
   condition: []
   action:
-  - data_template:
+  - service: notify.pushbullet
+    data:
       message: '{{trigger.to_state.attributes.friendly_name}}: {{trigger.to_state.state}}{{-
         "\n\n" -}}@{{now().strftime("%H:%M")}}[{{now().day}}/{{now().month}}]'
       title: 'temperature low ({{trigger.to_state.state}})!!!'
-    service: notify.pushbullet
 
 - alias: temp_high
   id: '1559049959765'
@@ -58,9 +58,9 @@ automation:
       hours: 48
   condition: []
   action:
-  - data_template:
+  - service: notify.pushbullet
+    data:
       message: '{{trigger.to_state.attributes.friendly_name}}: {{trigger.to_state.state}}{{-
         "\n\n" -}}@{{now().strftime("%H:%M")}}[{{now().day}}/{{now().month}}]'
       title: 'temperature high ({{trigger.to_state.state}})!!!'
-    service: notify.pushbullet
 

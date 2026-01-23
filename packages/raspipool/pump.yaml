@@ -1,46 +1,50 @@
-sensor:
-  - platform: template
-    sensors:
-      cycle_pool:
-        friendly_name: "Next Cycle pump"
-        value_template: >-
-          {% if is_state('sensor.ezo_temperature','unknown') %}
-            {% set temp = states('sensor.pool_water_temperature')|float %}
+template:
+  - sensor:
+      - name: "Cycle pool"
+        state: >-
+          {% set ezo_temp = states('sensor.ezo_temperature') %}
+          {% if ezo_temp in ['unknown', 'unavailable', 'none'] %}
+            {% set temp = states('sensor.pool_water_temperature') | float(0) %}
           {%- else -%}
-            {% set temp = states('sensor.ezo_temperature')|float %}
+            {% set temp = ezo_temp | float(0) %}
           {%- endif -%}
-          {{ ( state_attr('input_datetime.recirculation','timestamp')|float *
-            ( 1 - is_state('input_boolean.turbo','on')|int * states('input_number.turbo')|float * 2 / 300 ) *
-            ( temp / [1, ( 9 - temp / 2)]|max ) /
-            ( states('input_number.quality')|float + 6 ) )|round(0) | timestamp_custom('%H:%M', false) }}
-        entity_id:
-        - sensor.ezo_temperature
-        - sensor.pool_water_temperature
-        - input_number.cycle
-        - input_number.quality
-        icon_template: >-
-          {% if states('input_number.cycle')|int < 0 %}
+          {{ (state_attr('input_datetime.recirculation', 'timestamp') | float(0) *
+            (1 - is_state('input_boolean.turbo', 'on') | int * states('input_number.turbo') | float(0) * 2 / 300) *
+            (temp / [1, (9 - temp / 2)] | max) /
+            (states('input_number.quality') | float(0) + 6)) | round(0) | timestamp_custom('%H:%M', false) }}
+        icon: >-
+          {% set cycle = states('input_number.cycle') | int(0) %}
+          {% if cycle < 0 %}
             mdi:water-off
-          {% elif states('input_number.cycle')|int < 240 %}
+          {% elif cycle < 240 %}
             mdi:weather-snowy
-          {% elif states('input_number.cycle')|int >= 1440 %}
-            mdi:numeric-{{ (states('input_number.cycle')|int / 1440)|int }}-box-multiple-outline
+          {% elif cycle >= 1440 %}
+            mdi:numeric-{{ (cycle / 1440) | int }}-box-multiple-outline
           {% else %}
             mdi:weather-sunny
           {% endif %}
 #      surpressor:
-#        friendly_name: "Surpressor"
-#        value_template: "{{states('input_number.surpressor')|round(0)}}"
-      net_power:
-        friendly_name: "net_power_consumption"
-        value_template: "{{ states('sensor.envoy_122301074544_consommation_electrique_actuelle') | float - states('sensor.envoy_122301074544_production_d_electricite_actuelle') | float }}"
-      time_salt_max:
-        friendly_name: "Max Time Salt Electro"
-        value_template: >-
-          {% set tsaltmax = ((states('sensor.pool_water_temperature')|float-14)*12*4+47.6)|int %}
-          {%- if tsaltmax < 0 -%} {{ 0 }}
-          {%- else -%} {{ tsaltmax }}
-          {%- endif -%}
+#        name: "Surpressor"
+#        state: "{{ states('input_number.surpressor') | round(0) }}"
+      - name: "Net power"
+        state: >-
+          {{ states('sensor.envoy_122301074544_consommation_electrique_actuelle') | float(0) -
+             states('sensor.envoy_122301074544_production_d_electricite_actuelle') | float(0) }}
+      - name: "Time salt max"
+        state: >-
+          {% set tsaltmax = ((states('sensor.pool_water_temperature') | float(0) - 14) * 12 * 4 + 47.6) | int %}
+          {{ 0 if tsaltmax < 0 else tsaltmax }}
+  - binary_sensor:
+      - name: "Power excess"
+        state: "{{ states('sensor.net_power_mean') | float(0) < -1.2 }}"
+        delay_on:
+          minutes: 10
+      - name: "Power shortage"
+        state: "{{ states('sensor.net_power_mean') | float(0) > 0 }}"
+        delay_on:
+          minutes: 5
+
+sensor:
   - platform: statistics
     name: net_power_mean
     entity_id: sensor.net_power
@@ -48,25 +52,6 @@ sensor:
     max_age:
       minutes: 20
     precision: 2
-
-binary_sensor:
-  - platform: template
-    sensors:
-      power_excess:
-        friendly_name: "surproduction_nrj"
-        delay_on:
-          minutes: 10
-        delay_off:
-          minutes: 0
-        value_template: "{{ states('sensor.net_power_mean') | float < -1.2 }}"
-
-      power_shortage:
-        friendly_name: "conso_nrj"
-        delay_on:
-          minutes: 5
-        delay_off:
-          minutes: 0
-        value_template: "{{ states('sensor.net_power_mean') | float > 0 }}"
 
 
 input_number:
@@ -99,17 +84,16 @@ automation:
   id: '1559137717424'
   initial_state: true
   trigger:
-  - platform: template
-    value_template: "{{ states.sensor.time.state == (states.input_datetime.cycle_start.attributes.timestamp
-      | int | timestamp_custom('%H:%M', False)) }}"
+  - platform: time
+    at: input_datetime.cycle_start
   condition: []
   action:
   - service: counter.reset
     entity_id: counter.minutes_fonctionnement
   - service: input_number.set_value
-    data_template:
+    data:
       entity_id: input_number.out_of_order
-      value: "{{ states('input_number.out_of_order')|int - 1 }}"
+      value: "{{ states('input_number.out_of_order') | int(0) - 1 }}"
   - condition: numeric_state
     entity_id: input_number.out_of_order
     below: 0
@@ -127,9 +111,9 @@ automation:
   - service: automation.trigger
     entity_id: automation.cycle_pump_start
   - service: input_number.set_value
-    data_template:
+    data:
       entity_id: input_number.cycle
-      value: "{% set lmins = states('input_number.cycle')|int %} {%- if lmins <
+      value: "{% set lmins = states('input_number.cycle')|int(0) %} {%- if lmins <
         0 -%} {{ lmins + 1 }} {%- else -%} {% set mins = strptime(states('sensor.cycle_pool'),'%H:%M').hour
         * 60 + strptime(states('sensor.cycle_pool'),'%H:%M').minute %} {%- if
         lmins < 60 -%} {{ mins + lmins }} {%- elif lmins < 1440 -%} {{ mins }} {%- else -%} {{ lmins }} {%- endif -%} 
@@ -180,9 +164,9 @@ automation:
     entity_id: input_number.cycle
     above: 1439
   - service: input_number.set_value
-    data_template:
+    data:
       entity_id: input_number.cycle
-      value: "{{ states('input_number.cycle')|int - 1440 }}"
+      value: "{{ states('input_number.cycle') | int(0) - 1440 }}"
 
 - alias: cycle_turbo_start
   id: '1559223936600'
@@ -194,7 +178,7 @@ automation:
     state: 'on'
   - condition: numeric_state
     entity_id: input_number.turbo
-    above: '0'
+    above: 0
   - entity_id: switch.turbo
     service: switch.turn_off
   - delay: 00:{{ (states('input_number.cycle')|int * (1 - states('input_number.second_cycle')|int/100) * (1 - states('input_number.turbo')|int /100) /2 )|int }}:00
@@ -216,7 +200,7 @@ automation:
     entity_id: binary_sensor.power_shortage
     to: 'on'
   action:
-  - choose :
+  - choose:
     - conditions:
       - condition: state
         entity_id: binary_sensor.power_excess
@@ -231,7 +215,7 @@ automation:
         entity_id: counter.minutes_fonctionnement
         below: 46
       sequence:
-      - service : switch.turn_on
+      - service: switch.turn_on
         entity_id: switch.turbo
     - conditions:
       - condition: state
@@ -241,7 +225,7 @@ automation:
         entity_id: switch.turbo
         state: 'on'
       sequence:
-      - service : switch.turn_off
+      - service: switch.turn_off
         entity_id: switch.turbo
     - conditions:
       - condition: state
@@ -251,7 +235,7 @@ automation:
         entity_id: counter.minutes_fonctionnement
         above: 45
       sequence:
-      - service : switch.turn_off
+      - service: switch.turn_off
         entity_id: switch.turbo
 
         
@@ -324,12 +308,12 @@ automation:
   trigger:
   - platform: numeric_state
     entity_id: input_number.pump_on_for
-    above: '0'
+    above: 0
   condition: []
   action:
   - service: switch.turn_on
     entity_id: switch.pump
-  - delay: "{{states('input_number.pump_on_for')|int}}:{{((states('input_number.pump_on_for')|float % 1)*60)|int}}:0"
+  - delay: "{{ states('input_number.pump_on_for') | int(0) }}:{{ ((states('input_number.pump_on_for') | float(0) % 1) * 60) | int(0) }}:0"
   - service: switch.turn_off
     entity_id: switch.pump
   - service: input_number.set_value

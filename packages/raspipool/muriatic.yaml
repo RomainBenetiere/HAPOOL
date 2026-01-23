@@ -1,10 +1,9 @@
-sensor:
-  - platform: template
-    sensors:
-      muriatic_tank:
-        friendly_name: "Muriatic tank"
-        value_template: "{{ states('input_number.muriatic_tank')|round(2)}}"
+template:
+  - sensor:
+      - name: "Muriatic tank"
+        state: "{{ states('input_number.muriatic_tank') | float(0) | round(2) }}"
 
+sensor:
   - platform: history_stats
     name: muriatic_on_last_hour
     entity_id: switch.ph
@@ -71,39 +70,39 @@ automation:
   condition: []
   action:
   - service: input_number.set_value
-    data_template:
+    data:
       entity_id: input_number.muriatic_tank
-      value: " {{ ( states('input_number.muriatic_tank')|float - ( states('sensor.muriatic_on_last_hour')|float * states('input_number.muriatic_speed')|int * 6 / 100 ) ) | round(2) }} "
+      value: "{{ (states('input_number.muriatic_tank') | float(0) - (states('sensor.muriatic_on_last_hour') | float(0) * states('input_number.muriatic_speed') | int(0) * 6 / 100)) | round(2) }}"
 
 - alias: muriatic_tank_low
   id: '1559049845419'
   initial_state: true
   trigger:
     platform: template
-    value_template: "{% if states('input_number.notify_muriatic_tank')|int> 0 and states('sensor.muriatic_tank')|float < states('input_number.notify_muriatic_tank')|float %}true{% endif %}"
+    value_template: "{% if states('input_number.notify_muriatic_tank') | int(0) > 0 and states('sensor.muriatic_tank') | float(0) < states('input_number.notify_muriatic_tank') | float(0) %}true{% endif %}"
   condition: []
   action:
-  - data_template:
+  - service: notify.pushbullet
+    data:
       message: "@{{now().strftime('%H:%M')}}[{{now().day}}/{{now().month}}]"
-      title: "Muriatic tank low ({{states('input_number.muriatic_tank')|float}} liters )!!!"
-    service: notify.pushbullet
+      title: "Muriatic tank low ({{ states('input_number.muriatic_tank') | float(0) }} liters )!!!"
 
 - alias: muriatic_high
   id: '1559049844489'
   initial_state: true
   trigger:
     platform: template
-    value_template: "{% if states('input_number.notify_muriatic_high')|int> 0 and states('sensor.muriatic_on_last_48h')|float > (states('input_number.notify_muriatic_high')|float*100 ) / (states('input_number.muriatic_speed')|float *6) %}true{% endif %}"
+    value_template: "{% if states('input_number.notify_muriatic_high') | int(0) > 0 and states('sensor.muriatic_on_last_48h') | float(0) > (states('input_number.notify_muriatic_high') | float(0) * 100) / (states('input_number.muriatic_speed') | float(0) * 6) %}true{% endif %}"
   condition: []
   action:
   - entity_id: switch.ph
     service: switch.turn_off
   - entity_id: input_boolean.lock_muriatic
     service: input_boolean.turn_on
-  - data_template:
+  - service: notify.pushbullet
+    data:
       message: "{{now().strftime('%H:%M')}}[{{now().day}}/{{now().month}}]"
-      title: "Muriatic inject blocked ({{states('input_number.notify_muriatic_high')}} in 48 hours)!!!"
-    service: notify.pushbullet
+      title: "Muriatic inject blocked ({{ states('input_number.notify_muriatic_high') }} in 48 hours)!!!"
 
 - alias: muriatic_set
   id: '1559049844459'
@@ -112,9 +111,9 @@ automation:
   condition: []
   action:
   - service: input_number.set_value
-    data_template:
+    data:
       entity_id: input_number.muriatic_inject
-      value: " {{ ( states('input_number.capacity')|float * ( 10 ** (8 - states('input_number.ph_target')|float ) - 10 ** (8 - states('sensor.ph_mean')|float ) ) * (126.19 / states('input_number.muriatic_concentration')|float ),0 )|max |round(0)|int }} "
+      value: "{{ (states('input_number.capacity') | float(0) * (10 ** (8 - states('input_number.ph_target') | float(0)) - 10 ** (8 - states('sensor.ph_mean') | float(0))) * (126.19 / states('input_number.muriatic_concentration') | float(0)), 0) | max | round(0) | int }}"
 
 - alias: muriatic_inject
   id: '1559949826459'
@@ -127,20 +126,20 @@ automation:
     state: 'off'
   - condition: numeric_state
     entity_id: input_number.muriatic_inject
-    value_template: "{{ states('input_number.muriatic_inject')|float / states('input_number.capacity')|float }}"
+    value_template: "{{ states('input_number.muriatic_inject') | float(0) / states('input_number.capacity') | float(0) }}"
     above: 5.0
     below: 100.0
   - entity_id: switch.ph
     service: switch.turn_on
-  - data_template:
+  - service: notify.pushbullet
+    data:
       message: "{{now().strftime('%H:%M')}}[{{now().day}}/{{now().month}}]"
-      title: "Muriatic injection: ({{states('input_number.muriatic_inject')}} ml)!!!"
-    service: notify.pushbullet
-  - delay: 00:00:{{ [0 , 60 * states('input_number.muriatic_inject')|float/ states('input_number.muriatic_speed')|float ]|max|int }}
+      title: "Muriatic injection: ({{ states('input_number.muriatic_inject') }} ml)!!!"
+  - delay: 00:00:{{ [0, 60 * states('input_number.muriatic_inject') | float(0) / states('input_number.muriatic_speed') | float(0)] | max | int(0) }}
   - entity_id: switch.ph
     service: switch.turn_off
-  - data_template:
+  - service: notify.pushbullet
+    data:
       message: "{{now().strftime('%H:%M')}}[{{now().day}}/{{now().month}}]"
       title: "Muriatic injection end!!!"
-    service: notify.pushbullet
 

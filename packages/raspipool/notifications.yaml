@@ -25,8 +25,8 @@ automation:
     entity_id: input_boolean.notify_seasson
     state: 'on'
   action:
-  - service : notify.pushbullet
-    data_template:
+  - service: notify.pushbullet
+    data:
       message: "@{{now().strftime('%H:%M')}}[{{now().day}}/{{now().month}}]"
       title: 'Winter is comming!!!'
 
@@ -45,7 +45,7 @@ automation:
     state: 'on'
   action:
   - service: notify.pushbullet
-    data_template:
+    data:
       message: "@{{now().strftime('%H:%M')}}[{{now().day}}/{{now().month}}]"
       title: "Summer is here!!!"
 

@@ -15,8 +15,8 @@ tts:
 logger:
   default: critical
   logs:
-    homeassistant.components.sensor.atlas_scientific: debug
-    homeassistant.components.switch.command_line: debug
+    custom_components.atlas_scientific: debug
+    homeassistant.components.sensor.command_line: debug
 
 #group: !include groups.yaml
 # Disable automation

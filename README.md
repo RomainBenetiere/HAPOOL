@@ -3,6 +3,8 @@
 =======
 ## Installation
 
+Configuration mise a jour pour Home Assistant 2026.1.3 (template integration, composants personnalisés modernisés).
+
 1. Clonez ce dépôt ou copiez son contenu dans votre répertoire de configuration Home Assistant.
 2. Conservez les dossiers `packages/` et `custom_components/` à la racine de la configuration.
 3. Vérifiez que `configuration.yaml` inclut les packages :
