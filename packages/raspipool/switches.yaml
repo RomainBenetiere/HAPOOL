@@ -6,10 +6,10 @@ switch:
 # gpio_in_BCM_number: name
 # example=> pin#35 = 'gpio.24' = rpi24 = BCM_19 => 19: pump
 # execute 'gpio readall' to see all gpios an theis states in console
-      27: Pump
-      17: Turbo
-      21: ph
-      20: orp
+      27: Pump HW
+      17: Turbo HW
+      21: ph hw
+      20: orp hw
     invert_logic: true
 
 input_boolean:
@@ -45,7 +45,7 @@ template:
 binary_sensor:
   - platform: rpi_gpio
     ports:
-      23: FlowD
+      23: FlowD HW
     invert_logic: true
     pull_mode: "UP"
 

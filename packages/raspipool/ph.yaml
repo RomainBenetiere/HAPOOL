@@ -3,6 +3,7 @@ sensor:
 # For serial ports use:
 #   port: /dev/ttyUSB0
 # For I2C enter the hex device id
+    name: ezo_hw_ph
     port: 0x63
     scan_interval: 60
 

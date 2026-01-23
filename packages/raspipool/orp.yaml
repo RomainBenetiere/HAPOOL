@@ -11,6 +11,7 @@ sensor:
 # For serial ports use:
 #   port: /dev/ttyUSB0
 # For I2C enter the hex device id
+    name: ezo_hw_orp
     port: 0x62
     offset: -20
     scan_interval: 60

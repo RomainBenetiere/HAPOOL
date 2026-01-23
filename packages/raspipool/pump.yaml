@@ -28,8 +28,13 @@ template:
 #        state: "{{ states('input_number.surpressor') | round(0) }}"
       - name: "Net power"
         state: >-
-          {{ states('sensor.envoy_122301074544_consommation_electrique_actuelle') | float(0) -
-             states('sensor.envoy_122301074544_production_d_electricite_actuelle') | float(0) }}
+          {% if is_state('input_boolean.simulation_mode', 'on') %}
+            {{ states('input_number.sim_power_consumption') | float(0) -
+               states('input_number.sim_power_production') | float(0) }}
+          {% else %}
+            {{ states('sensor.envoy_122301074544_consommation_electrique_actuelle') | float(0) -
+               states('sensor.envoy_122301074544_production_d_electricite_actuelle') | float(0) }}
+          {% endif %}
       - name: "Time salt max"
         state: >-
           {% set tsaltmax = ((states('sensor.pool_water_temperature') | float(0) - 14) * 12 * 4 + 47.6) | int %}
@@ -268,12 +273,19 @@ automation:
     for:
       minutes: 5
   action:
-  - service: homeassistant.update_entity
-    entity_id: sensor.ezo_ph
-  - service: homeassistant.update_entity
-    entity_id: sensor.pool_water_temperature
-  - service: homeassistant.update_entity
-    entity_id: sensor.ezo_orp
+  - choose:
+    - conditions:
+      - condition: state
+        entity_id: input_boolean.simulation_mode
+        state: 'on'
+      sequence: []
+    default:
+      - service: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.ezo_hw_ph
+            - sensor.ezo_hw_temperature
+            - sensor.ezo_hw_orp
 
 - alias: 'every_5_min'
   id: 'surpressorcount'
@@ -282,7 +294,7 @@ automation:
   - platform: time_pattern
     minutes: '/5'  # Déclenche toutes les minutes
   action:
-  - choose :
+  - choose:
     - conditions:
       - condition: state
         entity_id: switch.turbo

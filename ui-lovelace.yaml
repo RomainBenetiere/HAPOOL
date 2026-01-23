@@ -311,4 +311,22 @@ views:
           - entity: sensor.cummulated_flow_high
           - entity: sensor.cummulated_flow_low
         type: entities
+  - badges: []
+    title: Simulation
+    icon: 'mdi:flask-outline'
+    cards:
+      - type: entities
+        title: Simulation
+        entities:
+          - entity: input_boolean.simulation_mode
+          - entity: input_number.sim_temperature
+          - entity: input_number.sim_ph
+          - entity: input_number.sim_orp
+          - entity: input_number.sim_power_consumption
+          - entity: input_number.sim_power_production
+          - entity: input_boolean.sim_pump
+          - entity: input_boolean.sim_turbo
+          - entity: input_boolean.sim_ph_pump
+          - entity: input_boolean.sim_orp_pump
+          - entity: input_boolean.sim_flowd
 

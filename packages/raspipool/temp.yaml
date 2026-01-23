@@ -19,6 +19,7 @@ sensor:
 # For serial ports use:
 #   port: /dev/ttyUSB0
 # For I2C enter the hex device id
+    name: ezo_hw_temperature
     port: 0x66
     scan_interval: 60
 
