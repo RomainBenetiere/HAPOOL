@@ -1,30 +1,28 @@
-sensor:
-  - platform: template
-    sensors:
-      pump_state:
-        friendly_name: "Pump State"
-        value_template: >-
+template:
+  - sensor:
+      - name: "Pump state"
+        state: >-
           {% if is_state('switch.pump', 'on') %}
-             {% if is_state('switch.turbo', 'on') %}
-                high
-             {% else %}
-                low
-             {% endif %}
+            {% if is_state('switch.turbo', 'on') %}
+              high
+            {% else %}
+              low
+            {% endif %}
           {% else %}
-             None
+            None
           {% endif %}
+      - name: "Remain cycles"
+        state: >-
+          {% set recirc_hours = state_attr('input_datetime.recirculation', 'hour') | int(0) %}
+          {% set recirc_minutes = state_attr('input_datetime.recirculation', 'minute') | int(0) %}
+          {% set recirc_total = recirc_hours + (recirc_minutes / 60) %}
+          {% set recirc_total = recirc_total if recirc_total > 0 else 1 %}
+          {% set low = states('sensor.cummulated_flow_low') | float(0) %}
+          {% set high = states('sensor.cummulated_flow_high') | float(0) %}
+          {% set cycles = states('input_number.notify_cycles') | float(0) %}
+          {{ (cycles - (low + high * 5) / recirc_total) | round(1) }}
 
-      remain_cycles:
-        friendly_name: "Remain cycles"
-        value_template: >-
-          {% set nextcycle = strptime(states('sensor.cycle_pool'),'%H:%M').hour + strptime(states('sensor.cycle_pool'),'%H:%M').minute|int/60 %} 
-          {{(states('input_number.notify_cycles')|float - (states('sensor.cummulated_flow_low')|float + states('sensor.cummulated_flow_high')|float * 5) / (state_attr('input_datetime.recirculation','hour')+ state_attr('input_datetime.recirculation','minute')|float/60) )|round(1)}}
-        unit_of_measurement: ''
-        entity_id: 
-        - input_number.notify_cycles
-        - sensor.cummulated_flow_low
-        - sensor.cummulated_flow_high
-  
+sensor:
   - platform: history_stats
     name: cummulated_flow_low
     entity_id: sensor.pump_state
@@ -69,10 +67,10 @@ automation:
     entity_id: input_number.notify_cycles
     above: 0
   action:
-  - data_template:
-      message: "in low speed: {{state_attr('sensor.cummulated_flow_low','value')}}{{'\n'}}in high speed: {{state_attr('sensor.cummulated_flow_high','value')}}{{'\n'}}@{{now().strftime('%H:%M')}}[{{now().day}}/{{now().month}}]"
-      title: "Flow: {{states('input_number.notify_cycles')|int}} cycles reached!!!"
-    service: notify.pushbullet
+  - service: notify.pushbullet
+    data:
+      message: "in low speed: {{ states('sensor.cummulated_flow_low') }}{{'\n'}}in high speed: {{ states('sensor.cummulated_flow_high') }}{{'\n'}}@{{now().strftime('%H:%M')}}[{{now().day}}/{{now().month}}]"
+      title: "Flow: {{ states('input_number.notify_cycles') | int(0) }} cycles reached!!!"
 
 - alias: reset_cummulated_flow_start
   id: '1559293506609'
@@ -80,7 +78,7 @@ automation:
   condition: []
   action:
   - service: input_datetime.set_datetime
-    data_template:
+    data:
       entity_id: input_datetime.cummulated_flow_start
       date: "{{now().timestamp()|timestamp_custom('%Y-%m-%d', True)}}"
       time: "{{now().timestamp()|timestamp_custom('%H:%M:%S', True)}}"

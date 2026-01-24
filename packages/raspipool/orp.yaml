@@ -11,6 +11,7 @@ sensor:
 # For serial ports use:
 #   port: /dev/ttyUSB0
 # For I2C enter the hex device id
+    name: ezo_hw_orp
     port: 0x62
     offset: -20
     scan_interval: 60
@@ -40,7 +41,7 @@ automation:
   condition: []
   action:
   - service: notify.pushbullet
-    data_template:
+    data:
       message: 'Between {{state_attr("sensor.orp_mean", "min_value")}} and {{state_attr("sensor.orp_mean", "max_value")}}{{- "\n\n" -}}@{{now().strftime("%H:%M")}}[{{now().day}}/{{now().month}}]'
       title: 'ORP probe bad (calibrate?) !!!'
   - service: automation.turn_off

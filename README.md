@@ -3,6 +3,8 @@
 =======
 ## Installation
 
+Configuration mise a jour pour Home Assistant 2026.1.3 (template integration, composants personnalisés modernisés).
+
 1. Clonez ce dépôt ou copiez son contenu dans votre répertoire de configuration Home Assistant.
 2. Conservez les dossiers `packages/` et `custom_components/` à la racine de la configuration.
 3. Vérifiez que `configuration.yaml` inclut les packages :
@@ -41,6 +43,17 @@ Deux composants personnalisés sont fournis dans `custom_components/` :
 - **rpi_gpio** : gestion des broches GPIO du Raspberry Pi pour les `binary_sensor`, `switch` ou `cover`.
 
 Placez ces dossiers dans `custom_components/` et redémarrez Home Assistant pour activer les intégrations.
+
+## Simulation mode (no hardware)
+
+For testing without hardware, a simulation package is included in
+`packages/raspipool/simulation.yaml`.
+
+- Turn on `input_boolean.simulation_mode` to use simulated values.
+- Adjust `input_number.sim_*` and `input_boolean.sim_*` helpers to drive
+  pH/ORP/temperature, power, pump state, and flow.
+- Hardware entities are now suffixed with `_hw` (for example
+  `sensor.ezo_hw_ph`, `switch.pump_hw`, `binary_sensor.flowd_hw`).
 
 
 This repository contains Home Assistant configuration for managing a swimming pool. It uses YAML packages under `packages/raspipool` and custom components in `custom_components`.
