@@ -17,7 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.reload import setup_reload_service
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from . import DOMAIN, PLATFORMS, setup_output, write_output
+from . import DOMAIN, HAS_GPIO, PLATFORMS, setup_output, write_output
 
 CONF_PULL_MODE = "pull_mode"
 CONF_PORTS = "ports"
@@ -94,11 +94,13 @@ class RPiGPIOSwitch(SwitchEntity):
         self._attr_name = name or DEVICE_DEFAULT_NAME
         self._attr_unique_id = unique_id
         self._attr_should_poll = False
+        self._attr_available = HAS_GPIO
         self._port = port
         self._invert_logic = invert_logic
         self._state = False
-        setup_output(self._port)
-        write_output(self._port, 1 if self._invert_logic else 0)
+        if HAS_GPIO:
+            setup_output(self._port)
+            write_output(self._port, 1 if self._invert_logic else 0)
 
     @property
     def is_on(self):
@@ -107,12 +109,14 @@ class RPiGPIOSwitch(SwitchEntity):
 
     def turn_on(self, **kwargs):
         """Turn the device on."""
-        write_output(self._port, 0 if self._invert_logic else 1)
+        if HAS_GPIO:
+            write_output(self._port, 0 if self._invert_logic else 1)
         self._state = True
         self.async_write_ha_state()
 
     def turn_off(self, **kwargs):
         """Turn the device off."""
-        write_output(self._port, 1 if self._invert_logic else 0)
+        if HAS_GPIO:
+            write_output(self._port, 1 if self._invert_logic else 0)
         self._state = False
         self.async_write_ha_state()
