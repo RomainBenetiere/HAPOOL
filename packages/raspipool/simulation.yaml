@@ -44,9 +44,29 @@ input_number:
     max: 10000
     step: 1
     unit_of_measurement: "W"
+  sim_outdoor_temperature:
+    name: Sim Outdoor Temperature
+    min: -20
+    max: 50
+    step: 0.1
+    unit_of_measurement: "C"
 
 template:
   - sensor:
+      - name: "Outdoor temperature"
+        state: >-
+          {% if is_state('input_boolean.simulation_mode', 'on') %}
+            {{ states('input_number.sim_outdoor_temperature') | float(0) }}
+          {% else %}
+            {{ states('sensor.openweathermap_temperature') | float(0) }}
+          {% endif %}
+        availability: >-
+          {% if is_state('input_boolean.simulation_mode', 'on') %}
+            {{ states('input_number.sim_outdoor_temperature') not in ['unknown', 'unavailable', 'none'] }}
+          {% else %}
+            {{ states('sensor.openweathermap_temperature') not in ['unknown', 'unavailable', 'none'] }}
+          {% endif %}
+        unit_of_measurement: "C"
       - name: "Ezo ph"
         state: >-
           {% if is_state('input_boolean.simulation_mode', 'on') %}

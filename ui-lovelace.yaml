@@ -1,7 +1,7 @@
 title: Raspipool
 views:
   - badges:
-      - sensor.openweathermap_temperature
+      - sensor.outdoor_temperature
       - sensor.e_fc
       - sensor.cycle_pool
       - binary_sensor.flowd
@@ -322,6 +322,7 @@ views:
           - entity: input_number.sim_temperature
           - entity: input_number.sim_ph
           - entity: input_number.sim_orp
+          - entity: input_number.sim_outdoor_temperature
           - entity: input_number.sim_power_consumption
           - entity: input_number.sim_power_production
           - entity: input_boolean.sim_pump

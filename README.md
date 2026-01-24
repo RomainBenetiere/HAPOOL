@@ -52,6 +52,7 @@ For testing without hardware, a simulation package is included in
 - Turn on `input_boolean.simulation_mode` to use simulated values.
 - Adjust `input_number.sim_*` and `input_boolean.sim_*` helpers to drive
   pH/ORP/temperature, power, pump state, and flow.
+- Set `input_number.sim_outdoor_temperature` to drive the outdoor badge.
 - Hardware entities are now suffixed with `_hw` (for example
   `sensor.ezo_hw_ph`, `switch.pump_hw`, `binary_sensor.flowd_hw`).
 
