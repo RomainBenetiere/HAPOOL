@@ -19,7 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.reload import setup_reload_service
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from . import DOMAIN, PLATFORMS, edge_detect, read_input, setup_input
+from . import DOMAIN, HAS_GPIO, PLATFORMS, edge_detect, read_input, setup_input
 
 CONF_BOUNCETIME = "bouncetime"
 CONF_INVERT_LOGIC = "invert_logic"
@@ -107,6 +107,10 @@ class RPiGPIOBinarySensor(BinarySensorEntity):
 
     async def async_read_gpio(self):
         """Read state from GPIO."""
+        if not HAS_GPIO:
+            self._state = None
+            self.async_write_ha_state()
+            return
         await asyncio.sleep(float(self._bouncetime) / 1000)
         self._state = await self.hass.async_add_executor_job(read_input, self._port)
         self.async_write_ha_state()
@@ -116,26 +120,32 @@ class RPiGPIOBinarySensor(BinarySensorEntity):
         self._attr_name = name or DEVICE_DEFAULT_NAME
         self._attr_unique_id = unique_id
         self._attr_should_poll = False
+        self._attr_available = HAS_GPIO
         self._port = port
         self._pull_mode = pull_mode
         self._bouncetime = bouncetime
         self._invert_logic = invert_logic
         self._state = None
 
-        setup_input(self._port, self._pull_mode)
+        if HAS_GPIO:
+            setup_input(self._port, self._pull_mode)
 
         def edge_detected(port):
             """Edge detection handler."""
             if self.hass is not None:
                 self.hass.async_create_task(self.async_read_gpio())
 
-        edge_detect(self._port, edge_detected, self._bouncetime)
+        if HAS_GPIO:
+            edge_detect(self._port, edge_detected, self._bouncetime)
 
     @property
     def is_on(self):
         """Return the state of the entity."""
-        return self._state != self._invert_logic
+        return self._state is not None and self._state != self._invert_logic
 
     def update(self):
         """Update the GPIO state."""
+        if not HAS_GPIO:
+            self._state = None
+            return
         self._state = read_input(self._port)

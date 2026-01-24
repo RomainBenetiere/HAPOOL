@@ -13,7 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.reload import setup_reload_service
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from . import DOMAIN, PLATFORMS, read_input, setup_input, setup_output, write_output
+from . import DOMAIN, HAS_GPIO, PLATFORMS, read_input, setup_input, setup_output, write_output
 
 CONF_RELAY_PIN = "relay_pin"
 CONF_RELAY_TIME = "relay_time"
@@ -100,6 +100,7 @@ class RPiGPIOCover(CoverEntity):
         """Initialize the cover."""
         self._attr_name = name
         self._attr_unique_id = unique_id
+        self._attr_available = HAS_GPIO
         self._state = False
         self._relay_pin = relay_pin
         self._state_pin = state_pin
@@ -107,21 +108,27 @@ class RPiGPIOCover(CoverEntity):
         self._relay_time = relay_time
         self._invert_state = invert_state
         self._invert_relay = invert_relay
-        setup_output(self._relay_pin)
-        setup_input(self._state_pin, self._state_pull_mode)
-        write_output(self._relay_pin, 0 if self._invert_relay else 1)
+        if HAS_GPIO:
+            setup_output(self._relay_pin)
+            setup_input(self._state_pin, self._state_pull_mode)
+            write_output(self._relay_pin, 0 if self._invert_relay else 1)
 
     def update(self):
         """Update the state of the cover."""
+        if not HAS_GPIO:
+            self._state = None
+            return
         self._state = read_input(self._state_pin)
 
     @property
     def is_closed(self):
         """Return true if cover is closed."""
-        return self._state != self._invert_state
+        return self._state is not None and self._state != self._invert_state
 
     def _trigger(self):
         """Trigger the cover."""
+        if not HAS_GPIO:
+            return
         write_output(self._relay_pin, 1 if self._invert_relay else 0)
         sleep(self._relay_time)
         write_output(self._relay_pin, 0 if self._invert_relay else 1)
@@ -138,10 +145,14 @@ class RPiGPIOCover(CoverEntity):
 
     async def async_close_cover(self, **kwargs):
         """Close the cover asynchronously."""
+        if not HAS_GPIO:
+            return
         if not self.is_closed:
             await self.hass.async_add_executor_job(self._trigger)
 
     async def async_open_cover(self, **kwargs):
         """Open the cover asynchronously."""
+        if not HAS_GPIO:
+            return
         if self.is_closed:
             await self.hass.async_add_executor_job(self._trigger)

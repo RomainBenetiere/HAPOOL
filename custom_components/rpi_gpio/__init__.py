@@ -1,14 +1,56 @@
 """Support for controlling GPIO pins of a Raspberry Pi."""
 
-from RPi import GPIO  # pylint: disable=import-error
+from __future__ import annotations
 
-from homeassistant.const import (
-    EVENT_HOMEASSISTANT_START,
-    EVENT_HOMEASSISTANT_STOP,
-    Platform,
-)
+import logging
+
+from homeassistant.const import EVENT_HOMEASSISTANT_START, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
+
+_LOGGER = logging.getLogger(__name__)
+
+try:
+    from RPi import GPIO  # type: ignore
+
+    HAS_GPIO = True
+except (ImportError, RuntimeError) as err:
+    HAS_GPIO = False
+
+    class _GPIOStub:
+        BCM = 0
+        OUT = 0
+        IN = 0
+        PUD_DOWN = 0
+        PUD_UP = 0
+        BOTH = 0
+
+        @staticmethod
+        def setmode(mode):
+            _LOGGER.warning("RPi.GPIO unavailable, running in stub mode.")
+
+        @staticmethod
+        def cleanup():
+            return None
+
+        @staticmethod
+        def setup(port, mode, pull_up_down=None):
+            return None
+
+        @staticmethod
+        def output(port, value):
+            return None
+
+        @staticmethod
+        def input(port):
+            return 0
+
+        @staticmethod
+        def add_event_detect(port, edge, callback=None, bouncetime=0):
+            return None
+
+    GPIO = _GPIOStub()
+    _LOGGER.warning("RPi.GPIO import failed: %s", err)
 
 DOMAIN = "rpi_gpio"
 PLATFORMS = [
@@ -20,6 +62,8 @@ PLATFORMS = [
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Raspberry PI GPIO component."""
+    if not HAS_GPIO:
+        _LOGGER.warning("RPi.GPIO not available; rpi_gpio will be disabled.")
 
     async def cleanup_gpio(event):
         """Clean up GPIO before stopping."""
@@ -30,7 +74,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, cleanup_gpio)
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_START, prepare_gpio)
-    await hass.async_add_executor_job(GPIO.setmode, GPIO.BCM)
+    if HAS_GPIO:
+        await hass.async_add_executor_job(GPIO.setmode, GPIO.BCM)
     return True
 
 
